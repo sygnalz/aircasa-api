@@ -4,12 +4,37 @@ const cors = require("cors");
 const { requireAuth } = require("./auth");
 
 const app = express();
-app.use(cors({ origin: process.env.CORS_ORIGIN, credentials: true }));
+
+// ✅ Allow a comma-separated list of origins from env
+const allowed = (process.env.CORS_ORIGINS || "")
+  .split(",")
+  .map(s => s.trim())
+  .filter(Boolean);
+
+console.log("Allowed origins:", allowed);
+
+app.use(cors({
+  origin: (origin, cb) => {
+    if (!origin) return cb(null, true); // allow curl/Postman/no-origin
+    const ok = allowed.some(a =>
+      a === origin ||
+      (a.endsWith("*") && origin.startsWith(a.slice(0, -1)))
+    );
+    return cb(ok ? null : new Error("Not allowed by CORS"), ok);
+  },
+  credentials: true,
+  methods: ["GET","POST","PUT","PATCH","DELETE","OPTIONS"],
+  allowedHeaders: ["Content-Type","Authorization"]
+}));
+
+app.options("*", cors()); // preflight
+
 app.use(express.json());
 
-app.get("/health", (req, res) => res.json({ ok: true, time: new Date().toISOString() }));
+app.get("/health", (req, res) =>
+  res.json({ ok: true, time: new Date().toISOString() })
+);
 
-// Protected test route
 app.get("/secure", requireAuth, (req, res) => {
   res.json({ ok: true, user: req.user });
 });
