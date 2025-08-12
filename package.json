@@ -1,0 +1,18 @@
+{
+  "scripts": {
+    "dev": "nodemon index.js",
+    "start": "node index.js"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.10"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.55.0",
+    "airtable": "^0.12.2",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.1",
+    "express": "^5.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "jwks-rsa": "^3.2.0"
+  }
+}
