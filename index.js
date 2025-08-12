@@ -5,7 +5,7 @@ const { requireAuth } = require("./auth");
 
 const app = express();
 
-// ✅ Allow a comma-separated list of origins from env
+// Allow a comma-separated list of origins (prod + local)
 const allowed = (process.env.CORS_ORIGINS || "")
   .split(",")
   .map(s => s.trim())
@@ -27,11 +27,9 @@ app.use(cors({
   allowedHeaders: ["Content-Type","Authorization"]
 }));
 
-app.options("*", cors()); // preflight
-
 app.use(express.json());
 
-app.get("/health", (req, res) =>
+app.get("/health", (_req, res) =>
   res.json({ ok: true, time: new Date().toISOString() })
 );
 
