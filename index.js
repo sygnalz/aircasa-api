@@ -21,7 +21,6 @@ const envOrigins = (process.env.CORS_ORIGINS || '')
 const defaultOrigins = [
   'https://aircasa-app.vercel.app',
   'https://aircasa-app-*.vercel.app',   // previews for project "aircasa-app"
-  'https://aircasa-*.vercel.app',       // if your preview URLs use "aircasa-<hash>..."
   'http://localhost:3000',
 ];
 
@@ -34,9 +33,7 @@ const SUPABASE_JWT_SECRET =
   '';
 
 // ---------- Helpers ----------
-// Turn a simple wildcard pattern (with *) into a safe RegExp
 function wildcardToRegExp(pattern) {
-  // Escape regex special chars, then replace "\*" with ".*"
   const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\\\*/g, '.*');
   return new RegExp(`^${escaped}$`);
 }
@@ -55,11 +52,12 @@ function originAllowed(origin) {
   return false;
 }
 
-// ---------- CORS ----------
+// ---------- CORS (preflight-friendly) ----------
 const corsOptions = {
   origin(origin, cb) {
-    if (originAllowed(origin)) return cb(null, true);
-    return cb(new Error(`CORS blocked. Origin "${origin}" is not allowed. Allowed: ${ORIGINS.join(', ')}`));
+    const ok = originAllowed(origin);
+    if (ok) return cb(null, true);
+    return cb(new Error(`CORS blocked. Origin "${origin}" is not allowed.`));
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
