@@ -1,10 +1,11 @@
 {
+  "name": "aircasa-api",
+  "private": true,
+  "type": "module",
+  "version": "1.0.0",
   "scripts": {
     "dev": "nodemon index.js",
     "start": "node index.js"
-  },
-  "devDependencies": {
-    "nodemon": "^3.1.10"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.55.0",
@@ -14,14 +15,11 @@
     "express": "^5.1.0",
     "jsonwebtoken": "^9.0.2",
     "jwks-rsa": "^3.2.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.10"
+  },
+  "engines": {
+    "node": ">=20 <23"
   }
-}
-
-{
-  "type": "module",
-  "scripts": {
-    "dev": "nodemon index.js",
-    "start": "node index.js"
-  }
-  // ...rest unchanged
 }
