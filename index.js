@@ -1,5 +1,5 @@
 // index.js
-// AirCasa API (Express + CORS + Supabase JWT verification)
+// AirCasa API (Express + CORS + Supabase JWT verification, robust wildcard CORS)
 
 import 'dotenv/config';
 import express from 'express';
@@ -20,7 +20,8 @@ const envOrigins = (process.env.CORS_ORIGINS || '')
 // Fallbacks (safe defaults)
 const defaultOrigins = [
   'https://aircasa-app.vercel.app',
-  'https://aircasa-app-*.vercel.app', // wildcard for preview deploys
+  'https://aircasa-app-*.vercel.app',   // previews for project "aircasa-app"
+  'https://aircasa-*.vercel.app',       // if your preview URLs use "aircasa-<hash>..."
   'http://localhost:3000',
 ];
 
@@ -33,35 +34,43 @@ const SUPABASE_JWT_SECRET =
   '';
 
 // ---------- Helpers ----------
+// Turn a simple wildcard pattern (with *) into a safe RegExp
+function wildcardToRegExp(pattern) {
+  // Escape regex special chars, then replace "\*" with ".*"
+  const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\\\*/g, '.*');
+  return new RegExp(`^${escaped}$`);
+}
+
+const originMatchers = ORIGINS.map(pat => {
+  if (pat.includes('*')) return { type: 'wild', re: wildcardToRegExp(pat), pat };
+  return { type: 'exact', val: pat };
+});
+
 function originAllowed(origin) {
   if (!origin) return true; // allow non-browser clients (no Origin)
-  if (ORIGINS.includes(origin)) return true;
-  // Support simple wildcard suffix like https://aircasa-app-*.vercel.app
-  for (const o of ORIGINS) {
-    if (o.endsWith('*')) {
-      const prefix = o.slice(0, -1);
-      if (origin.startsWith(prefix)) return true;
-    }
+  for (const m of originMatchers) {
+    if (m.type === 'exact' && origin === m.val) return true;
+    if (m.type === 'wild' && m.re.test(origin)) return true;
   }
   return false;
 }
 
 // ---------- CORS ----------
-app.use(
-  cors({
-    origin(origin, cb) {
-      if (originAllowed(origin)) return cb(null, true);
-      return cb(
-        new Error(
-          `CORS blocked. Origin "${origin}" is not allowed. Allowed: ${ORIGINS.join(', ')}`
-        )
-      );
-    },
-    credentials: true,
-  })
-);
+const corsOptions = {
+  origin(origin, cb) {
+    if (originAllowed(origin)) return cb(null, true);
+    return cb(new Error(`CORS blocked. Origin "${origin}" is not allowed. Allowed: ${ORIGINS.join(', ')}`));
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Authorization', 'Content-Type'],
+  optionsSuccessStatus: 204,
+};
 
-// Handle JSON
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions)); // explicit preflight
+
+// JSON parsing
 app.use(express.json());
 
 // ---------- Health ----------
