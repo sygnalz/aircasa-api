@@ -1,19 +1,17 @@
-// aircasa-api/app.js
 import express from "express";
 import cors from "cors";
-import propertiesRouter from "./src/routes/properties.js";
-import { requireAuth } from "./src/middleware/auth.js";
+import propertiesRouter from "./routes/properties.js";
+import { requireAuth } from "./middleware/auth.js";
 
 const app = express();
 
-app.use(cors({ origin: process.env.CORS_ORIGINS?.split(",") || [] }));
+app.use(cors({ origin: process.env.CORS_ORIGINS?.split(",") ?? true, credentials: true }));
 app.use(express.json());
 
-// Basic health + auth sanity check
-app.get("/healthz", (_req, res) => res.json({ ok: true }));
-app.get("/secure", requireAuth, (req, res) => res.json({ user: req.user }));
+app.get("/healthz", (req, res) => res.json({ ok: true }));
 
-// Mount protected /properties
+// Protected routes
 app.use("/properties", requireAuth, propertiesRouter);
+app.get("/secure", requireAuth, (req, res) => res.json({ user: req.user }));
 
 export default app;

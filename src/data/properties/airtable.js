@@ -21,11 +21,8 @@ export async function listProperties({
   const tableName = "Properties";
   const viewName = (viewOverride || process.env.AIRTABLE_VIEW_PROPERTIES || "Grid view").trim();
 
-  // Determine which email to use for filtering
   const selectedEmail = emailOverride || user?.email || "";
   const emailForFormula = String(selectedEmail).replace(/'/g, "\\'");
-
-  // Case-insensitive match using LOWER(), unless bypassed
   const filterByFormula = bypassEmail
     ? undefined
     : `LOWER({app_email}) = '${emailForFormula.toLowerCase()}'`;
@@ -82,13 +79,7 @@ export async function listProperties({
   }
 
   const meta = debug
-    ? {
-        baseId,
-        table: tableName,
-        view: viewName,
-        filterByFormula: filterByFormula || "(bypassed)",
-        matchedCount: records.length,
-      }
+    ? { baseId, table: tableName, view: viewName, filterByFormula: filterByFormula || "(bypassed)", matchedCount: records.length }
     : undefined;
 
   return debug ? { items: records, meta } : { items: records };
