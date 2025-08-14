@@ -3,16 +3,18 @@ import Airtable from "airtable";
 
 /**
  * Lists properties from Airtable filtered to the current user,
- * using the specified Airtable view and an additional email filter
- * for defense-in-depth.
+ * using a specific Airtable view (default "Grid view") and an additional
+ * email filter for defense-in-depth.
  *
- * Requirements (Render env):
+ * Required env (Render):
  *   AIRTABLE_API_KEY
  *   AIRTABLE_BASE_ID
  *
- * Uses your mapping:
+ * Optional env:
+ *   AIRTABLE_VIEW_PROPERTIES    // overrides the view name (default: "Grid view")
+ *
+ * Mapping you provided:
  *   Table: "Properties"
- *   View:  "attom_sell_property_address_street"
  *   Owner: app_email (matches Supabase JWT email)
  */
 export async function listProperties({ user }) {
@@ -20,17 +22,20 @@ export async function listProperties({ user }) {
   const baseId = process.env.AIRTABLE_BASE_ID;
 
   if (!apiKey || !baseId) {
-    throw new Error("Missing Airtable env vars");
+    throw new Error("Missing Airtable env vars (AIRTABLE_API_KEY, AIRTABLE_BASE_ID)");
   }
 
-  const tableName = "Properties"; // exact table name from your mapping
-  const viewName  = "attom_sell_property_address_street"; // exact view name from your mapping
+  const tableName = "Properties";
+  // Allow overriding the Airtable view by env; default to "Grid view"
+  const viewName = (process.env.AIRTABLE_VIEW_PROPERTIES || "Grid view").trim();
 
   const userEmail = user?.email;
-  if (!userEmail) throw new Error("Missing user email in JWT");
+  if (!userEmail) throw new Error("Missing user email in JWT (cannot filter records)");
 
-  // Extra safety: filter to current user even within the view
-  const filterByFormula = `{app_email} = '${String(userEmail).replace(/'/g, "\\'")}'`;
+  // Case-insensitive match using LOWER() to avoid casing mismatches.
+  // Also escape single quotes in the email to be safe.
+  const emailForFormula = String(userEmail).replace(/'/g, "\\'");
+  const filterByFormula = `LOWER({app_email}) = '${emailForFormula.toLowerCase()}'`;
 
   // Fields to return (your display + extras)
   const fields = [
@@ -62,22 +67,34 @@ export async function listProperties({ user }) {
   const base = new Airtable({ apiKey }).base(baseId);
   const records = [];
 
-  await base(tableName)
-    .select({
-      view: viewName,
-      filterByFormula,
-      fields,
-      pageSize: 100,
-    })
-    .eachPage((page, next) => {
-      records.push(
-        ...page.map((r) => ({
-          id: r.id,           // Airtable record id (kept for reference)
-          ...r.fields,        // your selected fields
-        }))
+  try {
+    await base(tableName)
+      .select({
+        view: viewName,      // the exact view your API should read
+        filterByFormula,     // defense-in-depth: still filter by current user
+        fields,              // keep payload small and predictable
+        pageSize: 100,
+      })
+      .eachPage(
+        (page, next) => {
+          records.push(...page.map((r) => ({ id: r.id, ...r.fields })));
+          next();
+        },
+        (err) => {
+          if (err) throw err;
+        }
       );
-      next();
-    });
+  } catch (err) {
+    // Friendlier error surface for common cases
+    const status = err?.statusCode || err?.status || "";
+    if (status === 401 || status === 403) {
+      throw new Error("Airtable auth failed (check AIRTABLE_API_KEY permissions and base access)");
+    }
+    if (status === 429) {
+      throw new Error("Airtable rate limit hit (429). Try again shortly or reduce page size.");
+    }
+    throw new Error(err?.message || "Airtable query failed");
+  }
 
   return records;
 }
