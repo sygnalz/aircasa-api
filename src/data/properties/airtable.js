@@ -1,23 +1,16 @@
-// aircasa-api/src/data/properties/airtable.js
 import Airtable from "airtable";
 
 /**
- * Lists properties from Airtable filtered to the current user,
- * using a specific Airtable view (default "Grid view") and an additional
- * email filter for defense-in-depth.
- *
- * Required env (Render):
- *   AIRTABLE_API_KEY
- *   AIRTABLE_BASE_ID
- *
- * Optional env:
- *   AIRTABLE_VIEW_PROPERTIES    // overrides the view name (default: "Grid view")
- *
- * Mapping you provided:
- *   Table: "Properties"
- *   Owner: app_email (matches Supabase JWT email)
+ * Lists properties from Airtable filtered to the current user.
+ * Supports request-time overrides for view/email to diagnose mismatches.
  */
-export async function listProperties({ user, debug = false }) {
+export async function listProperties({
+  user,
+  debug = false,
+  viewOverride,
+  bypassEmail = false,
+  emailOverride,
+}) {
   const apiKey = process.env.AIRTABLE_API_KEY;
   const baseId = process.env.AIRTABLE_BASE_ID;
 
@@ -26,18 +19,17 @@ export async function listProperties({ user, debug = false }) {
   }
 
   const tableName = "Properties";
-  // Allow overriding the Airtable view by env; default to "Grid view"
-  const viewName = (process.env.AIRTABLE_VIEW_PROPERTIES || "Grid view").trim();
+  const viewName = (viewOverride || process.env.AIRTABLE_VIEW_PROPERTIES || "Grid view").trim();
 
-  const userEmail = user?.email;
-  if (!userEmail) throw new Error("Missing user email in JWT (cannot filter records)");
+  // Determine which email to use for filtering
+  const selectedEmail = emailOverride || user?.email || "";
+  const emailForFormula = String(selectedEmail).replace(/'/g, "\\'");
 
-  // Case-insensitive match using LOWER() to avoid casing mismatches.
-  // Also escape single quotes in the email to be safe.
-  const emailForFormula = String(userEmail).replace(/'/g, "\\'");
-  const filterByFormula = `LOWER({app_email}) = '${emailForFormula.toLowerCase()}'`;
+  // Case-insensitive match using LOWER(), unless bypassed
+  const filterByFormula = bypassEmail
+    ? undefined
+    : `LOWER({app_email}) = '${emailForFormula.toLowerCase()}'`;
 
-  // Fields to return (your display + extras)
   const fields = [
     "property_id",
     "app_street",
@@ -65,7 +57,7 @@ export async function listProperties({ user, debug = false }) {
     await base(tableName)
       .select({
         view: viewName,
-        filterByFormula,
+        ...(filterByFormula ? { filterByFormula } : {}),
         fields,
         pageSize: 100,
       })
@@ -90,7 +82,13 @@ export async function listProperties({ user, debug = false }) {
   }
 
   const meta = debug
-    ? { baseId, table: tableName, view: viewName, filterByFormula, matchedCount: records.length }
+    ? {
+        baseId,
+        table: tableName,
+        view: viewName,
+        filterByFormula: filterByFormula || "(bypassed)",
+        matchedCount: records.length,
+      }
     : undefined;
 
   return debug ? { items: records, meta } : { items: records };
