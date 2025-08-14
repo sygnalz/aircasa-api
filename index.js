@@ -116,3 +116,31 @@ app.listen(PORT, () => {
   console.log('Allowed origins (patterns):', ORIGINS);
   console.log(`Token alg: HS256  Secret len: ${SUPABASE_JWT_SECRET ? SUPABASE_JWT_SECRET.length : 0}`);
 });
+
+// ...existing imports, CORS, /healthz, /secure, etc. stay above
+
+// --- New: /me returns the Supabase user from the Bearer token ---
+app.get('/me', (req, res) => {
+  try {
+    if (!SUPABASE_JWT_SECRET) {
+      return res.status(500).json({ error: 'Server missing SUPABASE_JWT_SECRET' });
+    }
+    const auth = req.headers.authorization || '';
+    if (!auth.startsWith('Bearer ')) return res.status(401).json({ error: 'Missing token' });
+    const token = auth.slice(7);
+
+    const decoded = jwt.verify(token, SUPABASE_JWT_SECRET, { algorithms: ['HS256'] });
+
+    // shape as our canonical "user" payload
+    return res.json({
+      ok: true,
+      user: {
+        id: decoded.sub,
+        email: decoded.email,
+        role: decoded.role || 'authenticated'
+      }
+    });
+  } catch (err) {
+    return res.status(401).json({ error: 'Invalid token' });
+  }
+});
