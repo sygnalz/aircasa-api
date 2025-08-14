@@ -6,6 +6,9 @@ import express from 'express';
 import cors from 'cors';
 import jwt from 'jsonwebtoken';
 
+// >>> NEW: import the Airtable-backed /properties router
+import propertiesRouter from './src/routes/properties.js';
+
 const app = express();
 
 // ---------- Config ----------
@@ -75,13 +78,14 @@ app.get('/healthz', (_req, res) => {
   res.json({ ok: true, service: 'aircasa-api', ts: Date.now() });
 });
 
-// ---------- Helpers (auth) ----------
+// ---------- Auth helpers ----------
 function extractBearerToken(req) {
   const auth = req.headers.authorization || '';
   if (!auth.startsWith('Bearer ')) return null;
   return auth.slice(7);
 }
-function requireSupabaseUser(req, res) {
+
+function verifySupabaseJwt(req, res) {
   if (!SUPABASE_JWT_SECRET) {
     res.status(500).json({ error: 'Server missing SUPABASE_JWT_SECRET' });
     return null;
@@ -94,57 +98,45 @@ function requireSupabaseUser(req, res) {
   try {
     const decoded = jwt.verify(token, SUPABASE_JWT_SECRET, { algorithms: ['HS256'] });
     return decoded; // contains sub, email, role, aud, iss
-  } catch (err) {
+  } catch (_err) {
     res.status(401).json({ error: 'Invalid token' });
     return null;
   }
 }
 
-// ---------- Secure endpoints ----------
-app.get('/secure', (req, res) => {
-  const decoded = requireSupabaseUser(req, res);
-  if (!decoded) return;
+// Tiny middleware that sets req.user or ends the request
+function authMiddleware(req, res, next) {
+  const decoded = verifySupabaseJwt(req, res);
+  if (!decoded) return; // response already sent
+  req.user = {
+    id: decoded.sub,
+    email: decoded.email,
+    role: decoded.role || 'authenticated',
+    aud: decoded.aud,
+    iss: decoded.iss,
+  };
+  next();
+}
 
+// ---------- Secure endpoints ----------
+app.get('/secure', authMiddleware, (req, res) => {
   return res.json({
     ok: true,
     message: 'Authenticated request succeeded',
-    user: {
-      id: decoded.sub,
-      email: decoded.email,
-      role: decoded.role,
-    },
-    iss: decoded.iss,
-    aud: decoded.aud,
+    user: req.user,
   });
 });
 
-app.get('/me', (req, res) => {
-  const decoded = requireSupabaseUser(req, res);
-  if (!decoded) return;
-
+app.get('/me', authMiddleware, (req, res) => {
   return res.json({
     ok: true,
-    user: {
-      id: decoded.sub,
-      email: decoded.email,
-      role: decoded.role || 'authenticated',
-    },
+    user: req.user,
   });
 });
 
-// ---------- New: /properties (mock) ----------
-app.get('/properties', (req, res) => {
-  const decoded = requireSupabaseUser(req, res);
-  if (!decoded) return;
-
-  // TODO: replace with real data source (Airtable/Supabase DB)
-  const items = [
-    { id: 'prop_001', address: '123 Main St', city: 'Austin', state: 'TX', price: 525000, status: 'active' },
-    { id: 'prop_002', address: '45 Market Ave', city: 'Miami', state: 'FL', price: 749000, status: 'pending' },
-  ];
-
-  res.json({ ok: true, items });
-});
+// ---------- /properties (Airtable-backed) ----------
+// NOTE: removed the old mock handler. We now mount the real router behind auth.
+app.use('/properties', authMiddleware, propertiesRouter);
 
 // ---------- Startup ----------
 app.listen(PORT, () => {
