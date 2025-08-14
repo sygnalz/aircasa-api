@@ -17,7 +17,7 @@ import Airtable from "airtable";
  *   Table: "Properties"
  *   Owner: app_email (matches Supabase JWT email)
  */
-export async function listProperties({ user }) {
+export async function listProperties({ user, debug = false }) {
   const apiKey = process.env.AIRTABLE_API_KEY;
   const baseId = process.env.AIRTABLE_BASE_ID;
 
@@ -44,18 +44,12 @@ export async function listProperties({ user }) {
     "app_city",
     "app_state",
     "app_zip_code",
-
-    // status checkboxes (5 tasks)
     "property_intake_completed",
     "photos_completed",
     "home_criteria_main_completed",
     "personal_financial_completed",
     "consultation_completed",
-
-    // sort/display companion
     "attom_id",
-
-    // extras
     "app_image_url",
     "app_estimated_value",
     "app_property_type",
@@ -70,9 +64,9 @@ export async function listProperties({ user }) {
   try {
     await base(tableName)
       .select({
-        view: viewName,      // the exact view your API should read
-        filterByFormula,     // defense-in-depth: still filter by current user
-        fields,              // keep payload small and predictable
+        view: viewName,
+        filterByFormula,
+        fields,
         pageSize: 100,
       })
       .eachPage(
@@ -85,7 +79,6 @@ export async function listProperties({ user }) {
         }
       );
   } catch (err) {
-    // Friendlier error surface for common cases
     const status = err?.statusCode || err?.status || "";
     if (status === 401 || status === 403) {
       throw new Error("Airtable auth failed (check AIRTABLE_API_KEY permissions and base access)");
@@ -96,5 +89,9 @@ export async function listProperties({ user }) {
     throw new Error(err?.message || "Airtable query failed");
   }
 
-  return records;
+  const meta = debug
+    ? { baseId, table: tableName, view: viewName, filterByFormula, matchedCount: records.length }
+    : undefined;
+
+  return debug ? { items: records, meta } : { items: records };
 }
